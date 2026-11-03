@@ -1,0 +1,64 @@
+name: reVC Web (WebAssembly) - build probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+          actions-cache-folder: emsdk-cache
+
+      - name: Show toolchain
+        run: |
+          emcc --version | head -1
+          cmake --version | head -1
+
+      - name: Apply web patches
+        run: python3 web/patch_web.py
+
+      - name: Configure
+        run: |
+          set -o pipefail
+          emcmake cmake -S . -B build-web -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PROJECT_INCLUDE="$GITHUB_WORKSPACE/web/emscripten.cmake" \
+            -DLIBRW_PLATFORM=GL3 -DLIBRW_GL3_GFXLIB=SDL2 \
+            -DLIBRW_TOOLS=OFF -DLIBRW_INSTALL=OFF \
+            -DREVC_AUDIO=OAL \
+            -DCMAKE_C_FLAGS="-pthread -O2" -DCMAKE_CXX_FLAGS="-pthread -O2" \
+            -DCMAKE_EXE_LINKER_FLAGS="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB -sMAXIMUM_MEMORY=1536MB -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sOFFSCREENCANVAS_SUPPORT=1 -sFORCE_FILESYSTEM=1 -lworkerfs.js" \
+            2>&1 | tee configure.log
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build-web -j4 2>&1 | tee build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-logs
+          path: |
+            configure.log
+            build.log
+
+      - name: Upload build output
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reVC-web
+          path: |
+            build-web/src/reVC*
