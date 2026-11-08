@@ -70,3 +70,4 @@ jobs:
           name: reVC-web
           path: |
             build-web/src/reVC*
+            build-web/reVC*

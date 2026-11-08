@@ -61,5 +61,10 @@ ok &= patch('src/fakerw/fake.cpp', 'RwInt32 RwEngineGetRenderScale(void) { retur
             'RwInt32 RwEngineGetRenderScale(void) { return 100; }', 'engine: render scale getter stub')
 ok &= patch('src/fakerw/fake.cpp', 'RwBool RwEngineSetRenderScale(RwInt32 percent) { return Engine::setRenderScale(percent); }',
             'RwBool RwEngineSetRenderScale(RwInt32 percent) { (void)percent; return 1; }', 'engine: render scale setter stub')
+
+# 6) sysinfo() is declared by Emscripten's libc but not implemented (link error): use fixed values on the web
+ok &= patch('src/skel/sdl2/sdl2.cpp', '    sysinfo(&systemInfo);\n',
+            '#ifdef __EMSCRIPTEN__\n    systemInfo.freeram = 512u * 1024u * 1024u; systemInfo.totalram = 1024u * 1024u * 1024u;\n#else\n    sysinfo(&systemInfo);\n#endif\n',
+            'engine: sysinfo stub for web')
 print('RESULT:', 'all patches applied' if ok else 'SOME PATCHES FAILED - see above')
 sys.exit(0 if ok else 1)
