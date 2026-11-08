@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>reVC Web - اختبار</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font-family: system-ui, sans-serif; background:#0b0b10; color:#eee; }
+  header { padding:12px 14px; }
+  h1 { font-size:18px; margin:0 0 6px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; }
+  .pill { padding:4px 10px; border-radius:999px; font-size:13px; background:#222; }
+  .ok { background:#12391f; color:#7dffa0; } .bad { background:#43191c; color:#ff9aa0; }
+  button { font-size:16px; padding:10px 18px; border-radius:10px; border:0; background:#3b82f6; color:#fff; }
+  #wrap { position:relative; width:100%; max-width:960px; margin:8px auto; aspect-ratio:4/3; background:#000; }
+  canvas { width:100%; height:100%; display:block; }
+  #log { direction:ltr; text-align:left; white-space:pre-wrap; font:12px/1.4 ui-monospace,monospace; background:#111; margin:8px; padding:8px; border-radius:8px; max-height:40vh; overflow:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>reVC Web - اختبار التشغيل</h1>
+  <div class="row" id="diag"></div>
+  <div class="row"><button id="start">تشغيل المحرك</button></div>
+</header>
+<div id="wrap"><canvas id="canvas" tabindex="-1"></canvas></div>
+<div id="log"></div>
+<script src="coi-serviceworker.js"></script>
+<script>
+const logEl = document.getElementById('log');
+function log(...a){ const s=a.join(' '); logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; console.log(s); }
+function pill(text, ok){ const d=document.createElement('span'); d.className='pill '+(ok?'ok':'bad'); d.textContent=text; document.getElementById('diag').appendChild(d); }
+pill('Isolated: ' + window.crossOriginIsolated, window.crossOriginIsolated);
+pill('SharedArrayBuffer: ' + (typeof SharedArrayBuffer !== 'undefined'), typeof SharedArrayBuffer !== 'undefined');
+pill('OffscreenCanvas: ' + (typeof OffscreenCanvas !== 'undefined'), typeof OffscreenCanvas !== 'undefined');
+let gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch(e){}
+pill('WebGL2: ' + gl2, gl2);
+pill('OPFS: ' + !!(navigator.storage && navigator.storage.getDirectory), !!(navigator.storage && navigator.storage.getDirectory));
+if (navigator.deviceMemory) pill('RAM~' + navigator.deviceMemory + 'GB', true);
+window.addEventListener('error', (e)=>log('JS error:', e.message));
+window.addEventListener('unhandledrejection', (e)=>log('Promise error:', e.reason));
+document.getElementById('start').onclick = () => {
+  document.getElementById('start').disabled = true;
+  log('Loading engine...');
+  window.Module = {
+    canvas: document.getElementById('canvas'),
+    print: (t)=>log(t), printErr: (t)=>log('[err] ' + t),
+    onAbort: (w)=>log('ABORT:', w),
+    setStatus: (t)=>{ if (t) log('[status] ' + t); },
+    locateFile: (p)=>p,
+  };
+  const s = document.createElement('script'); s.src = 'reVC.js';
+  s.onerror = ()=>log('Could not load reVC.js');
+  document.body.appendChild(s);
+};
+</script>
+</body>
+</html>

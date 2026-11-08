@@ -5,6 +5,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build-web:
@@ -38,7 +40,7 @@ jobs:
             -DLIBRW_TOOLS=OFF -DLIBRW_INSTALL=OFF \
             -DREVC_AUDIO=OAL \
             -DCMAKE_C_FLAGS="-pthread -O2 -idirafter $GITHUB_WORKSPACE/web/include" -DCMAKE_CXX_FLAGS="-pthread -O2 -idirafter $GITHUB_WORKSPACE/web/include" \
-            -DCMAKE_EXE_LINKER_FLAGS="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB -sMAXIMUM_MEMORY=1536MB -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sOFFSCREENCANVAS_SUPPORT=1 -sFORCE_FILESYSTEM=1 -lworkerfs.js" \
+            -DCMAKE_EXE_LINKER_FLAGS="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB -sMAXIMUM_MEMORY=1536MB -sSTACK_SIZE=4MB -sDEFAULT_PTHREAD_STACK_SIZE=4MB -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sOFFSCREENCANVAS_SUPPORT=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=FS,ccall,cwrap -sASSERTIONS=1 -lworkerfs.js" \
             2>&1 | tee configure.log
 
       - name: Build
@@ -63,11 +65,33 @@ jobs:
             build.log
             errors.txt
 
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp web/site/* site/
+          cp build-web/src/reVC.js build-web/src/reVC.wasm site/
+          ls -la site
+
       - name: Upload build output
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: reVC-web
           path: |
-            build-web/src/reVC*
-            build-web/reVC*
+            build-web/src/reVC.js
+            build-web/src/reVC.wasm
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build-web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
