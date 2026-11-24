@@ -9,10 +9,14 @@
   body { margin:0; font-family: system-ui, sans-serif; background:#0b0b10; color:#eee; }
   header { padding:12px 14px; }
   h1 { font-size:18px; margin:0 0 6px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; }
+  h2 { font-size:15px; margin:14px 0 6px; color:#9db4ff; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; align-items:center; }
   .pill { padding:4px 10px; border-radius:999px; font-size:13px; background:#222; }
   .ok { background:#12391f; color:#7dffa0; } .bad { background:#43191c; color:#ff9aa0; }
   button { font-size:16px; padding:10px 18px; border-radius:10px; border:0; background:#3b82f6; color:#fff; }
+  button.sec { background:#333; } button:disabled { opacity:.4; }
+  input[type=file] { font-size:15px; max-width:100%; }
+  progress { width:100%; height:14px; } #pinfo { font-size:12px; color:#aaa; direction:ltr; text-align:left; }
   #wrap { position:relative; width:100%; max-width:960px; margin:8px auto; aspect-ratio:4/3; background:#000; }
   canvas { width:100%; height:100%; display:block; }
   #log { direction:ltr; text-align:left; white-space:pre-wrap; font:12px/1.4 ui-monospace,monospace; background:#111; margin:8px; padding:8px; border-radius:8px; max-height:40vh; overflow:auto; }
@@ -22,29 +26,81 @@
 <header>
   <h1>reVC Web - اختبار التشغيل</h1>
   <div class="row" id="diag"></div>
-  <div class="row"><button id="start">تشغيل المحرك</button></div>
+
+  <h2>1) ملفات اللعبة (مرة واحدة)</h2>
+  <div class="row"><input type="file" id="pak"> <button id="import" disabled>استيراد</button> <button id="wipe" class="sec">حذف الملفات</button></div>
+  <progress id="prog" value="0" max="1" hidden></progress>
+  <div id="pinfo"></div>
+  <div class="row" id="state"></div>
+
+  <h2>2) التشغيل</h2>
+  <div class="row"><button id="start" disabled>تشغيل المحرك</button></div>
 </header>
 <div id="wrap"><canvas id="canvas" tabindex="-1"></canvas></div>
 <div id="log"></div>
 <script src="coi-serviceworker.js"></script>
 <script>
-const logEl = document.getElementById('log');
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
 function log(...a){ const s=a.join(' '); logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; console.log(s); }
-function pill(text, ok){ const d=document.createElement('span'); d.className='pill '+(ok?'ok':'bad'); d.textContent=text; document.getElementById('diag').appendChild(d); }
-pill('Isolated: ' + window.crossOriginIsolated, window.crossOriginIsolated);
-pill('SharedArrayBuffer: ' + (typeof SharedArrayBuffer !== 'undefined'), typeof SharedArrayBuffer !== 'undefined');
-pill('OffscreenCanvas: ' + (typeof OffscreenCanvas !== 'undefined'), typeof OffscreenCanvas !== 'undefined');
+function pill(parent, text, ok){ const d=document.createElement('span'); d.className='pill '+(ok?'ok':'bad'); d.textContent=text; $(parent).appendChild(d); }
+pill('diag','Isolated: ' + window.crossOriginIsolated, window.crossOriginIsolated);
+pill('diag','SharedArrayBuffer: ' + (typeof SharedArrayBuffer !== 'undefined'), typeof SharedArrayBuffer !== 'undefined');
+pill('diag','OffscreenCanvas: ' + (typeof OffscreenCanvas !== 'undefined'), typeof OffscreenCanvas !== 'undefined');
 let gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch(e){}
-pill('WebGL2: ' + gl2, gl2);
-pill('OPFS: ' + !!(navigator.storage && navigator.storage.getDirectory), !!(navigator.storage && navigator.storage.getDirectory));
-if (navigator.deviceMemory) pill('RAM~' + navigator.deviceMemory + 'GB', true);
+pill('diag','WebGL2: ' + gl2, gl2);
+const hasOpfs = !!(navigator.storage && navigator.storage.getDirectory);
+pill('diag','OPFS: ' + hasOpfs, hasOpfs);
+if (navigator.deviceMemory) pill('diag','RAM~' + navigator.deviceMemory + 'GB', true);
 window.addEventListener('error', (e)=>log('JS error:', e.message));
 window.addEventListener('unhandledrejection', (e)=>log('Promise error:', e.reason));
-document.getElementById('start').onclick = () => {
-  document.getElementById('start').disabled = true;
+
+const MB = (n) => (n/1048576).toFixed(0);
+async function refreshState() {
+  $('state').innerHTML = '';
+  let present = false;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const models = await root.getDirectoryHandle('models');
+    const f = await (await models.getFileHandle('gta3.img')).getFile();
+    present = f.size > 100e6;
+    pill('state', 'gta3.img: ' + MB(f.size) + ' MB', present);
+  } catch (e) { pill('state', 'ملفات اللعبة غير موجودة بعد', false); }
+  try {
+    const est = await navigator.storage.estimate();
+    pill('state', 'التخزين: ' + MB(est.usage) + ' / ' + MB(est.quota) + ' MB', true);
+    if (navigator.storage.persist) { const p = await navigator.storage.persist(); pill('state', 'تخزين دائم: ' + p, p); }
+  } catch (e) {}
+  $('start').disabled = !present;
+}
+if (hasOpfs) refreshState();
+
+$('pak').onchange = () => { $('import').disabled = !$('pak').files.length; };
+$('import').onclick = () => {
+  const file = $('pak').files[0]; if (!file) return;
+  $('import').disabled = true; $('prog').hidden = false;
+  const w = new Worker('import-worker.js');
+  w.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'progress') { $('prog').max = m.total; $('prog').value = m.done; $('pinfo').textContent = `${MB(m.done)} / ${MB(m.total)} MB  [${m.i+1}/${m.n}] ${m.file}${m.skipped?' (موجود)':''}`; }
+    else if (m.type === 'done') { $('pinfo').textContent = `تم استيراد ${m.count} ملفاً (${MB(m.total)} MB)`; w.terminate(); refreshState(); }
+    else if (m.type === 'error') { $('pinfo').textContent = 'خطأ: ' + m.message; log('Import error:', m.message); w.terminate(); $('import').disabled = false; }
+  };
+  w.onerror = (e) => { log('Worker error:', e.message); $('import').disabled = false; };
+  w.postMessage({ file });
+};
+$('wipe').onclick = async () => {
+  if (!confirm('حذف كل ملفات اللعبة من المتصفح؟')) return;
+  const root = await navigator.storage.getDirectory();
+  for await (const [name] of root.entries()) { try { await root.removeEntry(name, { recursive: true }); } catch (e) { log('remove failed:', name, e); } }
+  $('pinfo').textContent = 'تم الحذف'; refreshState();
+};
+
+$('start').onclick = () => {
+  $('start').disabled = true;
   log('Loading engine...');
   window.Module = {
-    canvas: document.getElementById('canvas'),
+    canvas: $('canvas'),
     print: (t)=>log(t), printErr: (t)=>log('[err] ' + t),
     onAbort: (w)=>log('ABORT:', w),
     setStatus: (t)=>{ if (t) log('[status] ' + t); },

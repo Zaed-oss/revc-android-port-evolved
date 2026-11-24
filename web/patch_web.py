@@ -66,5 +66,13 @@ ok &= patch('src/fakerw/fake.cpp', 'RwBool RwEngineSetRenderScale(RwInt32 percen
 ok &= patch('src/skel/sdl2/sdl2.cpp', '    sysinfo(&systemInfo);\n',
             '#ifdef __EMSCRIPTEN__\n    systemInfo.freeram = 512u * 1024u * 1024u; systemInfo.totalram = 1024u * 1024u * 1024u;\n#else\n    sysinfo(&systemInfo);\n#endif\n',
             'engine: sysinfo stub for web')
+
+# 7) game data lives in the browser's private storage (OPFS) mounted at /game (WasmFS)
+ok &= patch('src/CMakeLists.txt', 'target_include_directories(${EXECUTABLE}\n    PRIVATE\n        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>',
+            'if(EMSCRIPTEN)\n    target_sources(${EXECUTABLE} PRIVATE ${PROJECT_SOURCE_DIR}/web/web_fs.cpp)\nendif()\n\ntarget_include_directories(${EXECUTABLE}\n    PRIVATE\n        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>',
+            'engine: add web_fs.cpp')
+ok &= patch('src/skel/sdl2/sdl2.cpp', 'int\nmain(int argc, char *argv[])\n{\n    RwV2d pos;\n    RwInt32 i;\n',
+            '#ifdef __EMSCRIPTEN__\nextern "C" void web_mount_game_fs(void);\n#endif\nint\nmain(int argc, char *argv[])\n{\n    RwV2d pos;\n    RwInt32 i;\n#ifdef __EMSCRIPTEN__\n    web_mount_game_fs();\n#endif\n',
+            'engine: mount OPFS at start of main')
 print('RESULT:', 'all patches applied' if ok else 'SOME PATCHES FAILED - see above')
 sys.exit(0 if ok else 1)
