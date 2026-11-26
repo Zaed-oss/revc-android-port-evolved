@@ -74,5 +74,10 @@ ok &= patch('src/CMakeLists.txt', 'target_include_directories(${EXECUTABLE}\n   
 ok &= patch('src/skel/sdl2/sdl2.cpp', 'int\nmain(int argc, char *argv[])\n{\n    RwV2d pos;\n    RwInt32 i;\n',
             '#ifdef __EMSCRIPTEN__\nextern "C" void web_mount_game_fs(void);\n#endif\nint\nmain(int argc, char *argv[])\n{\n    RwV2d pos;\n    RwInt32 i;\n#ifdef __EMSCRIPTEN__\n    web_mount_game_fs();\n#endif\n',
             'engine: mount OPFS at start of main')
+
+# 8) the engine derives its root folder from getcwd(); under WasmFS that returned "/", so pin it to /game
+ok &= patch('src/core/FileMgr.cpp', '    _getcwd(ms_rootDirName, 128);\n',
+            '#ifdef __EMSCRIPTEN__\n    strcpy(ms_rootDirName, "/game");\n#else\n    _getcwd(ms_rootDirName, 128);\n#endif\n',
+            'engine: fixed root dir /game on web')
 print('RESULT:', 'all patches applied' if ok else 'SOME PATCHES FAILED - see above')
 sys.exit(0 if ok else 1)

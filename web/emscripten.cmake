@@ -1,6 +1,8 @@
 # Included right after every project() call (-DCMAKE_PROJECT_INCLUDE=web/emscripten.cmake).
 # Provides the third-party targets the engine expects, using Emscripten's built-in ports.
 if(EMSCRIPTEN)
+  # named POSIX semaphores (sem_open) do not exist in the browser: use the engine's unnamed-semaphore path
+  add_compile_definitions(USE_UNNAMED_SEM)
   if(NOT TARGET SDL2::SDL2)
     add_library(SDL2::SDL2 INTERFACE IMPORTED GLOBAL)
     set_target_properties(SDL2::SDL2 PROPERTIES

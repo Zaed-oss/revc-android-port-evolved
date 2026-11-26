@@ -34,12 +34,13 @@
   <div class="row" id="state"></div>
 
   <h2>2) التشغيل</h2>
-  <div class="row"><button id="start" disabled>تشغيل المحرك</button></div>
+  <div class="row"><button id="start" disabled>تشغيل المحرك</button> <button id="reload" class="sec">إعادة تحميل الصفحة</button></div>
 </header>
 <div id="wrap"><canvas id="canvas" tabindex="-1"></canvas></div>
 <div id="log"></div>
 <script src="coi-serviceworker.js"></script>
 <script>
+const BUILD = '__BUILD__';
 const $ = (id) => document.getElementById(id);
 const logEl = $('log');
 function log(...a){ const s=a.join(' '); logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; console.log(s); }
@@ -51,6 +52,7 @@ let gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webg
 pill('diag','WebGL2: ' + gl2, gl2);
 const hasOpfs = !!(navigator.storage && navigator.storage.getDirectory);
 pill('diag','OPFS: ' + hasOpfs, hasOpfs);
+pill('diag','build: ' + BUILD.slice(0,7), true);
 if (navigator.deviceMemory) pill('diag','RAM~' + navigator.deviceMemory + 'GB', true);
 window.addEventListener('error', (e)=>log('JS error:', e.message));
 window.addEventListener('unhandledrejection', (e)=>log('Promise error:', e.reason));
@@ -89,6 +91,7 @@ $('import').onclick = () => {
   w.onerror = (e) => { log('Worker error:', e.message); $('import').disabled = false; };
   w.postMessage({ file });
 };
+$('reload').onclick = () => location.reload();
 $('wipe').onclick = async () => {
   if (!confirm('حذف كل ملفات اللعبة من المتصفح؟')) return;
   const root = await navigator.storage.getDirectory();
@@ -96,7 +99,10 @@ $('wipe').onclick = async () => {
   $('pinfo').textContent = 'تم الحذف'; refreshState();
 };
 
+let started = false;
 $('start').onclick = () => {
+  if (started) { log('أعد تحميل الصفحة (F5) قبل التشغيل مرة ثانية'); return; }
+  started = true;
   $('start').disabled = true;
   log('Loading engine...');
   window.Module = {
@@ -104,9 +110,11 @@ $('start').onclick = () => {
     print: (t)=>log(t), printErr: (t)=>log('[err] ' + t),
     onAbort: (w)=>log('ABORT:', w),
     setStatus: (t)=>{ if (t) log('[status] ' + t); },
-    locateFile: (p)=>p,
+    locateFile: (p)=>p + '?v=' + BUILD,
   };
-  const s = document.createElement('script'); s.src = 'reVC.js';
+  let secs = 0; const hb = setInterval(() => { secs += 5; log('[page] ' + secs + 's... (لا توجد رسائل جديدة؟ افتح F12 وأرسل لي Console)'); if (secs >= 60) clearInterval(hb); }, 5000);
+  const _print = window.Module.print; window.Module.print = (t) => { clearInterval(hb); _print(t); };
+  const s = document.createElement('script'); s.src = 'reVC.js?v=' + BUILD;
   s.onerror = ()=>log('Could not load reVC.js');
   document.body.appendChild(s);
 };
